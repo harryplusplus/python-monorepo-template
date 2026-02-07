@@ -3,4 +3,11 @@ name = "api"
 version = "0.0.0"
 description = "API layer: FastAPI with OpenAPI"
 requires-python = "~=3.11.0"
-dependencies = []
+dependencies = ["db"]
+
+[tool.uv.sources]
+db = { workspace = true }
+
+[build-system]
+requires = ["uv_build~=0.10.0"]
+build-backend = "uv_build"

@@ -12,7 +12,13 @@ members = [
 [[package]]
 name = "api"
 version = "0.0.0"
-source = { virtual = "packages/api" }
+source = { editable = "packages/api" }
+dependencies = [
+    { name = "db" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "db", editable = "packages/db" }]
 
 [[package]]
 name = "click"
@@ -38,7 +44,7 @@ wheels = [
 [[package]]
 name = "db"
 version = "0.0.0"
-source = { virtual = "packages/db" }
+source = { editable = "packages/db" }
 
 [[package]]
 name = "deptry"
