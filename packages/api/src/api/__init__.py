@@ -1,3 +1,5 @@
 import db
 
-print(db.foo())
+
+def foo():
+    return db.foo()

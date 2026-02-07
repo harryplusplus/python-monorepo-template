@@ -47,7 +47,7 @@ def deptry():
 
 def ruff():
     for path in iglob(PACKAGES_PATTERN):
-        run("ruff check", cwd=path)
+        run("ruff check --fix . && ruff format .", cwd=path)
 
 
 def pyright():
@@ -55,10 +55,16 @@ def pyright():
         run("pyright", cwd=path)
 
 
+def pytest():
+    for path in iglob(PACKAGES_PATTERN):
+        run("pytest", cwd=path)
+
+
 def check():
     ruff()
     pyright()
     deptry()
+    pytest()
 
 
 class Args(argparse.Namespace):
@@ -89,7 +95,8 @@ def main():
     ).set_defaults(handler=deptry)
 
     subparsers.add_parser(
-        "ruff", help='모든 하위 패키지 경로에서 "ruff check"를 실행합니다.'
+        "ruff",
+        help='모든 하위 패키지 경로에서 "ruff check --fix"와 "ruff format"을 실행합니다.',
     ).set_defaults(handler=ruff)
 
     subparsers.add_parser(
@@ -97,8 +104,12 @@ def main():
     ).set_defaults(handler=pyright)
 
     subparsers.add_parser(
+        "pytest", help='모든 하위 패키지 경로에서 "pytest"를 실행합니다.'
+    ).set_defaults(handler=pytest)
+
+    subparsers.add_parser(
         "check",
-        help='모든 하위 패키지 경로에서 "ruff check", "pyright", "deptry"를 실행합니다.',
+        help='모든 하위 패키지 경로에서 "ruff check", "pyright", "deptry", "pytest"를 실행합니다.',
     ).set_defaults(handler=check)
 
     args = parser.parse_args(namespace=Args())
