@@ -3,7 +3,7 @@ name = "db"
 version = "0.0.0"
 description = "Database layer: SQLAlchemy + Alembic"
 requires-python = "~=3.11.0"
-dependencies = []
+dependencies = ["asyncmy~=0.2.11", "sqlalchemy~=2.0.46"]
 
 [build-system]
 requires = ["uv_build~=0.10.0"]
