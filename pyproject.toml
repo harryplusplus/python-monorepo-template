@@ -10,4 +10,10 @@ dependencies = []
 members = ["packages/*"]
 
 [dependency-groups]
-dev = ["deptry==0.24.0", "pyright==1.1.408", "pytest==9.0.2", "ruff==0.15.0"]
+dev = [
+    "deptry==0.24.0",
+    "pyright==1.1.408",
+    "pytest==9.0.2",
+    "pytest-cov==7.0.0",
+    "ruff==0.15.0",
+]
