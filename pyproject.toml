@@ -1,0 +1,10 @@
+[project]
+name = "python-monorepo-template"
+version = "0.0.0"
+description = "Python Monorepo template - Project structure optimized for AI Agents"
+readme = "README.md"
+requires-python = "~=3.11.0"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["packages/*"]
