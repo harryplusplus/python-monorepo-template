@@ -136,22 +136,6 @@ async def _transactional(
     elif propagation == Propagation.REQUIRES_NEW:
         return await _create(isolation_level, invoke, override_session=True)
 
-    elif propagation == Propagation.SUPPORTS:
-        session = session_ctx_var.get()
-        if session is None:
-            return await invoke()
-
-        return await _support(session, invoke)
-
-    elif propagation == Propagation.NOT_SUPPORTED:
-        return await _non_transactional(invoke)
-
-    elif propagation == Propagation.NEVER:
-        if session_ctx_var.get() is not None:
-            raise RuntimeError("Transaction exists")
-
-        return await invoke()
-
     elif propagation == Propagation.NESTED:
         session = session_ctx_var.get()
         if session is None:
@@ -176,13 +160,13 @@ async def _create(
             conn = await session.connection()
             await conn.execution_options(isolation_level=isolation_level)
 
-        async with session.begin():
-            if override_session or session_ctx_var.get() is not None:
-                async with _override_session_context(session):
-                    return await invoke()
-            else:
-                async with session_context(session):
-                    return await invoke()
+    async with session.begin():
+        if override_session:
+            async with _override_session_context(session):
+                return await invoke()
+
+        async with session_context(session):
+            return await invoke()
 
 
 async def _support(
@@ -196,19 +180,9 @@ async def _support(
         return await invoke()
 
 
-async def _non_transactional(
-    invoke: Callable[..., Any],
-) -> Any:
-    if session_ctx_var.get() is None:
-        return await invoke()
-
-    async with _override_session_context(None):
-        return await invoke()
-
-
 @asynccontextmanager
 async def _override_session_context(
-    session: AsyncSession | None,
+    session: AsyncSession,
 ) -> AsyncGenerator[None, None]:
     token = session_ctx_var.set(session)
     try:
