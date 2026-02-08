@@ -134,7 +134,7 @@ async def _transactional(
         return await invoke()
 
     elif propagation == Propagation.REQUIRES_NEW:
-        return await _create(isolation_level, invoke)
+        return await _create(isolation_level, invoke, override_session=True)
 
     elif propagation == Propagation.NESTED:
         session = session_ctx_var.get()
@@ -148,6 +148,8 @@ async def _transactional(
 async def _create(
     isolation_level: IsolationLevel | None,
     invoke: Callable[..., Any],
+    *,
+    override_session: bool = False,
 ) -> Any:
     sm = current_sessionmaker()
     async with sm() as session:
@@ -155,6 +157,21 @@ async def _create(
             conn = await session.connection()
             await conn.execution_options(isolation_level=isolation_level)
 
-    async with session.begin():
-        async with session_context(session):
-            return await invoke()
+        async with session.begin():
+            if override_session:
+                async with _override_session_context(session):
+                    return await invoke()
+
+            async with session_context(session):
+                return await invoke()
+
+
+@asynccontextmanager
+async def _override_session_context(
+    session: AsyncSession,
+) -> AsyncGenerator[None, None]:
+    token = session_ctx_var.set(session)
+    try:
+        yield
+    finally:
+        session_ctx_var.reset(token)
