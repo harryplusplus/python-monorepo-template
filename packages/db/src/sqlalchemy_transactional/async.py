@@ -11,52 +11,52 @@ Sessionmaker = Callable[..., AsyncSession]
 
 SessionmakerContext = ContextVar[Sessionmaker | None]
 
-sessionmaker_context: SessionmakerContext = ContextVar(
+sessionmaker_ctx_var: SessionmakerContext = ContextVar(
     "async.sessionmaker", default=None
 )
 
 
 @asynccontextmanager
-async def enter_sessionmaker(
+async def sessionmaker_context(
     sessionmaker: Sessionmaker,
 ) -> AsyncGenerator[Sessionmaker, None]:
-    if sessionmaker_context.get():
+    if sessionmaker_ctx_var.get():
         raise RuntimeError("Sessionmaker already set")
 
-    token = sessionmaker_context.set(sessionmaker)
+    token = sessionmaker_ctx_var.set(sessionmaker)
     try:
         yield sessionmaker
     finally:
-        sessionmaker_context.reset(token)
+        sessionmaker_ctx_var.reset(token)
 
 
 def current_sessionmaker() -> Sessionmaker:
-    sessionmaker = sessionmaker_context.get()
+    sessionmaker = sessionmaker_ctx_var.get()
     if sessionmaker is None:
         raise RuntimeError("Sessionmaker not set")
 
     return sessionmaker
 
 
-session_context: ContextVar[AsyncSession | None] = ContextVar(
+session_ctx_var: ContextVar[AsyncSession | None] = ContextVar(
     "async.session", default=None
 )
 
 
 @asynccontextmanager
-async def enter_session(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
-    if session_context.get():
+async def session_context(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
+    if session_ctx_var.get():
         raise RuntimeError("Session already set")
 
-    token = session_context.set(session)
+    token = session_ctx_var.set(session)
     try:
         yield session
     finally:
-        session_context.reset(token)
+        session_ctx_var.reset(token)
 
 
 def current_session() -> AsyncSession:
-    session = session_context.get()
+    session = session_ctx_var.get()
     if session is None:
         raise RuntimeError("Session not set")
 
@@ -108,15 +108,26 @@ async def _transactional(
         propagation = Propagation.REQUIRED
 
     if propagation == Propagation.REQUIRED:
-        session = session_context.get()
+        session = session_ctx_var.get()
         if session is None:
-            sessionmaker = current_sessionmaker()
-            async with sessionmaker() as session:
-                async with enter_session(session):
+            sm = current_sessionmaker()
+            async with sm() as session:
+                conn = await session.connection()
+                await conn.execution_options(isolation_level=isolation_level)
+
+                async with session_context(session):
                     async with session.begin():
                         return await func(*args, **kwargs)
         else:
-            async with enter_session(session):
+            async with session_context(session):
                 return await func(*args, **kwargs)
+
+    elif propagation == Propagation.MANDATORY:
+        session = session_ctx_var.get()
+        if session is None:
+            raise RuntimeError("No active transaction")
+
+        async with session_context(session):
+            return await func(*args, **kwargs)
     else:
         raise NotImplementedError
