@@ -43,5 +43,6 @@ class TransactionRequiredError(SQLAlchemyTransactionalError):
 
 
 class UnsupportedPropagationModeError(SQLAlchemyTransactionalError):
-    def __init__(self, propagation: object) -> None:
-        super().__init__(f"Unsupported propagation mode: {propagation!r}.")
+    def __init__(self, propagation: Propagation) -> None:
+        self.propagation: Propagation = propagation
+        super().__init__(f"Unsupported propagation mode: {propagation.value!r}.")
