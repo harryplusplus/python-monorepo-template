@@ -4,7 +4,7 @@ from db.models.post import Post
 from db.models.user import User
 
 
-def test_foo_and_models():
+def test_foo_and_models() -> None:
     assert foo() == "foo"
 
     user = User(name="alice")
