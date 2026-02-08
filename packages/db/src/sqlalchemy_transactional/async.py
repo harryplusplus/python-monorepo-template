@@ -79,14 +79,13 @@ def transactional(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            propagation = None if callable(func_or_propagation) else func_or_propagation
+            propagation = _resolve_propagation(func_or_propagation)
+            invoke = _resolve_invoke(func, args, kwargs)
 
             return await _transactional(
                 propagation,
                 isolation_level,
-                func,
-                args,
-                kwargs,
+                invoke,
             )
 
         return wrapper
@@ -97,37 +96,68 @@ def transactional(
     return decorator
 
 
-async def _transactional(
-    propagation: Propagation | None,
-    isolation_level: IsolationLevel | None,
-    func: Callable[..., Any],
-    args: Any,
-    kwargs: Any,
-) -> Any:
-    if propagation is None:
-        propagation = Propagation.REQUIRED
+def _resolve_propagation(
+    func_or_propagation: Callable[..., Any] | Propagation | None,
+) -> Propagation:
+    if callable(func_or_propagation) or func_or_propagation is None:
+        return Propagation.REQUIRED
 
+    return func_or_propagation
+
+
+def _resolve_invoke(
+    func: Callable[..., Any], args: Any, kwargs: Any
+) -> Callable[..., Any]:
+    async def invoke():
+        return await func(*args, **kwargs)
+
+    return invoke
+
+
+async def _transactional(
+    propagation: Propagation,
+    isolation_level: IsolationLevel | None,
+    invoke: Callable[..., Any],
+) -> Any:
     if propagation == Propagation.REQUIRED:
         session = session_ctx_var.get()
         if session is None:
-            sm = current_sessionmaker()
-            async with sm() as session:
-                conn = await session.connection()
-                await conn.execution_options(isolation_level=isolation_level)
-
-                async with session.begin():
-                    async with session_context(session):
-                        return await func(*args, **kwargs)
+            return await _create(isolation_level, invoke)
         else:
-            async with session_context(session):
-                return await func(*args, **kwargs)
+            return await _support(session, invoke)
 
     elif propagation == Propagation.MANDATORY:
         session = session_ctx_var.get()
         if session is None:
             raise RuntimeError("No active transaction")
 
-        async with session_context(session):
-            return await func(*args, **kwargs)
+        return await _support(session, invoke)
+
+    elif propagation == Propagation.REQUIRES_NEW:
+        return await _create(isolation_level, invoke)
+
     else:
         raise NotImplementedError
+
+
+async def _create(
+    isolation_level: IsolationLevel | None,
+    invoke: Callable[..., Any],
+) -> Any:
+    sm = current_sessionmaker()
+    async with sm() as session:
+        if isolation_level:
+            conn = await session.connection()
+            await conn.execution_options(isolation_level=isolation_level)
+
+        async with session.begin():
+            async with session_context(session):
+                return await invoke()
+
+
+async def _support(
+    session: AsyncSession,
+    invoke: Callable[..., Any],
+) -> Any:
+    async with session_context(session):
+        return await invoke()
