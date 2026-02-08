@@ -115,8 +115,8 @@ async def _transactional(
                 conn = await session.connection()
                 await conn.execution_options(isolation_level=isolation_level)
 
-                async with session_context(session):
-                    async with session.begin():
+                async with session.begin():
+                    async with session_context(session):
                         return await func(*args, **kwargs)
         else:
             async with session_context(session):
