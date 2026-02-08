@@ -134,7 +134,31 @@ async def _transactional(
         return await _support(session, invoke)
 
     elif propagation == Propagation.REQUIRES_NEW:
-        return await _create(isolation_level, invoke)
+        return await _create(isolation_level, invoke, override_session=True)
+
+    elif propagation == Propagation.SUPPORTS:
+        session = session_ctx_var.get()
+        if session is None:
+            return await invoke()
+
+        return await _support(session, invoke)
+
+    elif propagation == Propagation.NOT_SUPPORTED:
+        return await _non_transactional(invoke)
+
+    elif propagation == Propagation.NEVER:
+        if session_ctx_var.get() is not None:
+            raise RuntimeError("Transaction exists")
+
+        return await invoke()
+
+    elif propagation == Propagation.NESTED:
+        session = session_ctx_var.get()
+        if session is None:
+            return await _create(isolation_level, invoke)
+
+        async with session.begin_nested():
+            return await _support(session, invoke)
 
     else:
         raise NotImplementedError
@@ -143,6 +167,8 @@ async def _transactional(
 async def _create(
     isolation_level: IsolationLevel | None,
     invoke: Callable[..., Any],
+    *,
+    override_session: bool = False,
 ) -> Any:
     sm = current_sessionmaker()
     async with sm() as session:
@@ -151,13 +177,41 @@ async def _create(
             await conn.execution_options(isolation_level=isolation_level)
 
         async with session.begin():
-            async with session_context(session):
-                return await invoke()
+            if override_session or session_ctx_var.get() is not None:
+                async with _override_session_context(session):
+                    return await invoke()
+            else:
+                async with session_context(session):
+                    return await invoke()
 
 
 async def _support(
     session: AsyncSession,
     invoke: Callable[..., Any],
 ) -> Any:
+    if session_ctx_var.get() is session:
+        return await invoke()
+
     async with session_context(session):
         return await invoke()
+
+
+async def _non_transactional(
+    invoke: Callable[..., Any],
+) -> Any:
+    if session_ctx_var.get() is None:
+        return await invoke()
+
+    async with _override_session_context(None):
+        return await invoke()
+
+
+@asynccontextmanager
+async def _override_session_context(
+    session: AsyncSession | None,
+) -> AsyncGenerator[None, None]:
+    token = session_ctx_var.set(session)
+    try:
+        yield
+    finally:
+        session_ctx_var.reset(token)
