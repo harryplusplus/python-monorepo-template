@@ -13,3 +13,35 @@ class Propagation(str, Enum):
 
     # Execute within a nested transaction if a current transaction exists, behave like REQUIRED otherwise.
     NESTED = "nested"
+
+
+class SQLAlchemyTransactionalError(Exception):
+    default_message = "sqlalchemy_transactional error."
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or self.default_message)
+
+
+class SessionFactoryAlreadyBoundError(SQLAlchemyTransactionalError):
+    default_message = "Session factory is already bound to the current context."
+
+
+class SessionFactoryNotBoundError(SQLAlchemyTransactionalError):
+    default_message = "Session factory is not bound to the current context."
+
+
+class SessionAlreadyBoundError(SQLAlchemyTransactionalError):
+    default_message = "Session is already bound to the current context."
+
+
+class SessionNotBoundError(SQLAlchemyTransactionalError):
+    default_message = "Session is not bound to the current context."
+
+
+class TransactionRequiredError(SQLAlchemyTransactionalError):
+    default_message = "An active transaction is required in the current context."
+
+
+class UnsupportedPropagationModeError(SQLAlchemyTransactionalError):
+    def __init__(self, propagation: object) -> None:
+        super().__init__(f"Unsupported propagation mode: {propagation!r}.")

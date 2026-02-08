@@ -3,9 +3,14 @@ import importlib
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy_transactional.common import Propagation
+from sqlalchemy_transactional.common import (
+    Propagation,
+    SessionFactoryNotBoundError,
+    SessionNotBoundError,
+    TransactionRequiredError,
+)
 
-tx = importlib.import_module("sqlalchemy_transactional.async")
+tx = importlib.import_module("sqlalchemy_transactional.asyncio")
 
 
 async def _count_items(sm: async_sessionmaker) -> int:
@@ -28,7 +33,7 @@ async def test_sessionmaker_context_sets_and_resets(
     async def requires_sessionmaker() -> None:
         tx.current_session()
 
-    with pytest.raises(RuntimeError, match="Sessionmaker not set"):
+    with pytest.raises(SessionFactoryNotBoundError):
         await requires_sessionmaker()
 
     async with tx.sessionmaker_context(sessionmaker):
@@ -54,7 +59,7 @@ async def test_required_creates_session_and_commits(
 
     assert await _count_items(sessionmaker) == 1
 
-    with pytest.raises(RuntimeError, match="Session not set"):
+    with pytest.raises(SessionNotBoundError):
         tx.current_session()
 
 
@@ -73,7 +78,7 @@ async def test_mandatory_requires_existing_transaction(
                 {"name": "mandatory"},
             )
 
-        with pytest.raises(RuntimeError, match="No active transaction"):
+        with pytest.raises(TransactionRequiredError):
             await insert_mandatory()
 
         @tx.transactional

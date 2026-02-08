@@ -5,14 +5,22 @@ from typing import Any, AsyncGenerator, Callable, overload
 
 from sqlalchemy.engine.interfaces import IsolationLevel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy_transactional.common import Propagation
+from sqlalchemy_transactional.common import (
+    Propagation,
+    SessionAlreadyBoundError,
+    SessionFactoryAlreadyBoundError,
+    SessionFactoryNotBoundError,
+    SessionNotBoundError,
+    TransactionRequiredError,
+    UnsupportedPropagationModeError,
+)
 
 Sessionmaker = Callable[..., AsyncSession]
 
 SessionmakerContext = ContextVar[Sessionmaker | None]
 
 _sessionmaker_ctx_var: SessionmakerContext = ContextVar(
-    "async.sessionmaker", default=None
+    "sqlalchemy_transactional.asyncio.sessionmaker", default=None
 )
 
 
@@ -21,7 +29,7 @@ async def sessionmaker_context(
     sessionmaker: Sessionmaker,
 ) -> AsyncGenerator[Sessionmaker, None]:
     if _sessionmaker_ctx_var.get():
-        raise RuntimeError("Sessionmaker already set")
+        raise SessionFactoryAlreadyBoundError()
 
     token = _sessionmaker_ctx_var.set(sessionmaker)
     try:
@@ -33,13 +41,13 @@ async def sessionmaker_context(
 def _current_sessionmaker() -> Sessionmaker:
     sessionmaker = _sessionmaker_ctx_var.get()
     if sessionmaker is None:
-        raise RuntimeError("Sessionmaker not set")
+        raise SessionFactoryNotBoundError()
 
     return sessionmaker
 
 
 session_ctx_var: ContextVar[AsyncSession | None] = ContextVar(
-    "async.session", default=None
+    "sqlalchemy_transactional.asyncio.session", default=None
 )
 
 
@@ -50,7 +58,7 @@ async def _session_context(
     override: bool = False,
 ) -> AsyncGenerator[AsyncSession, None]:
     if not override and session_ctx_var.get():
-        raise RuntimeError("Session already set")
+        raise SessionAlreadyBoundError()
 
     token = session_ctx_var.set(session)
     try:
@@ -62,7 +70,7 @@ async def _session_context(
 def current_session() -> AsyncSession:
     session = session_ctx_var.get()
     if session is None:
-        raise RuntimeError("Session not set")
+        raise SessionNotBoundError()
 
     return session
 
@@ -133,7 +141,7 @@ async def _transactional(
     elif propagation == Propagation.MANDATORY:
         session = session_ctx_var.get()
         if session is None:
-            raise RuntimeError("No active transaction")
+            raise TransactionRequiredError()
 
         return await invoke()
 
@@ -147,6 +155,8 @@ async def _transactional(
 
         async with session.begin_nested():
             return await invoke()
+
+    raise UnsupportedPropagationModeError(propagation)
 
 
 async def _create(
