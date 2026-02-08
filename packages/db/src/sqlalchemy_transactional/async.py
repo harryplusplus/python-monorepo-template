@@ -11,7 +11,7 @@ Sessionmaker = Callable[..., AsyncSession]
 
 SessionmakerContext = ContextVar[Sessionmaker | None]
 
-sessionmaker_ctx_var: SessionmakerContext = ContextVar(
+_sessionmaker_ctx_var: SessionmakerContext = ContextVar(
     "async.sessionmaker", default=None
 )
 
@@ -20,18 +20,18 @@ sessionmaker_ctx_var: SessionmakerContext = ContextVar(
 async def sessionmaker_context(
     sessionmaker: Sessionmaker,
 ) -> AsyncGenerator[Sessionmaker, None]:
-    if sessionmaker_ctx_var.get():
+    if _sessionmaker_ctx_var.get():
         raise RuntimeError("Sessionmaker already set")
 
-    token = sessionmaker_ctx_var.set(sessionmaker)
+    token = _sessionmaker_ctx_var.set(sessionmaker)
     try:
         yield sessionmaker
     finally:
-        sessionmaker_ctx_var.reset(token)
+        _sessionmaker_ctx_var.reset(token)
 
 
-def current_sessionmaker() -> Sessionmaker:
-    sessionmaker = sessionmaker_ctx_var.get()
+def _current_sessionmaker() -> Sessionmaker:
+    sessionmaker = _sessionmaker_ctx_var.get()
     if sessionmaker is None:
         raise RuntimeError("Sessionmaker not set")
 
@@ -44,8 +44,12 @@ session_ctx_var: ContextVar[AsyncSession | None] = ContextVar(
 
 
 @asynccontextmanager
-async def session_context(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
-    if session_ctx_var.get():
+async def _session_context(
+    session: AsyncSession,
+    *,
+    override: bool = False,
+) -> AsyncGenerator[AsyncSession, None]:
+    if not override and session_ctx_var.get():
         raise RuntimeError("Session already set")
 
     token = session_ctx_var.set(session)
@@ -151,7 +155,7 @@ async def _create(
     *,
     override_session: bool = False,
 ) -> Any:
-    sm = current_sessionmaker()
+    sm = _current_sessionmaker()
     async with sm() as session:
         if isolation_level:
             conn = await session.connection()
@@ -159,19 +163,8 @@ async def _create(
 
         async with session.begin():
             if override_session:
-                async with _override_session_context(session):
+                async with _session_context(session, override=True):
                     return await invoke()
 
-            async with session_context(session):
+            async with _session_context(session):
                 return await invoke()
-
-
-@asynccontextmanager
-async def _override_session_context(
-    session: AsyncSession,
-) -> AsyncGenerator[None, None]:
-    token = session_ctx_var.set(session)
-    try:
-        yield
-    finally:
-        session_ctx_var.reset(token)

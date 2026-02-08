@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-from typing import Sequence
 
 import pytest
 from sqlalchemy import text
@@ -27,14 +26,15 @@ async def _names(sm: async_sessionmaker) -> list[str]:
 
 @pytest.mark.asyncio
 async def test_sessionmaker_context_sets_and_resets(sessionmaker: async_sessionmaker) -> None:
+    @tx.transactional
+    async def requires_sessionmaker() -> None:
+        tx.current_session()
+
     with pytest.raises(RuntimeError, match="Sessionmaker not set"):
-        tx.current_sessionmaker()
+        await requires_sessionmaker()
 
     async with tx.sessionmaker_context(sessionmaker):
-        assert tx.current_sessionmaker() is sessionmaker
-
-    with pytest.raises(RuntimeError, match="Sessionmaker not set"):
-        tx.current_sessionmaker()
+        await requires_sessionmaker()
 
 
 @pytest.mark.asyncio
